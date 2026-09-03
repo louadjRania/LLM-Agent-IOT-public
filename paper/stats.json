@@ -1,0 +1,308 @@
+{
+  "rq1_topology_effect": [
+    {
+      "model": "GPT-5.5",
+      "test": "pearson_chi2",
+      "chi2": 90.01,
+      "df": 4,
+      "p": 1.311059411218847e-18,
+      "min_expected": 10.2
+    },
+    {
+      "model": "Claude Sonnet 4.5",
+      "test": "pearson_chi2",
+      "chi2": 11.83,
+      "df": 4,
+      "p": 0.018634646635166053,
+      "min_expected": 20.0
+    },
+    {
+      "model": "Gemini 2.5 Flash",
+      "test": "pearson_chi2",
+      "chi2": 38.62,
+      "df": 4,
+      "p": 8.351016201461122e-08,
+      "min_expected": 16.8
+    },
+    {
+      "model": "Gemini 3.5 Flash",
+      "test": "pearson_chi2",
+      "chi2": 50.1,
+      "df": 4,
+      "p": 3.4492549355835117e-10,
+      "min_expected": 15.0
+    }
+  ],
+  "rq2_execution_heterogeneity": [
+    {
+      "model": "GPT-5.5",
+      "topology": "linear",
+      "rate_exec1": 100.0,
+      "rate_exec2": 100.0,
+      "delta_pp": 0.0,
+      "test": "fisher_exact",
+      "p": 1.0,
+      "p_holm": 1.0,
+      "significant": false
+    },
+    {
+      "model": "GPT-5.5",
+      "topology": "star",
+      "rate_exec1": 100.0,
+      "rate_exec2": 100.0,
+      "delta_pp": 0.0,
+      "test": "fisher_exact",
+      "p": 1.0,
+      "p_holm": 1.0,
+      "significant": false
+    },
+    {
+      "model": "GPT-5.5",
+      "topology": "ring",
+      "rate_exec1": 100.0,
+      "rate_exec2": 96.0,
+      "delta_pp": 4.0,
+      "test": "fisher_exact",
+      "p": 1.0,
+      "p_holm": 1.0,
+      "significant": false
+    },
+    {
+      "model": "GPT-5.5",
+      "topology": "tree",
+      "rate_exec1": 100.0,
+      "rate_exec2": 0.0,
+      "delta_pp": 100.0,
+      "test": "fisher_exact",
+      "p": 1.5821457204897235e-14,
+      "p_holm": 3.1642914409794467e-13,
+      "significant": true
+    },
+    {
+      "model": "GPT-5.5",
+      "topology": "mesh",
+      "rate_exec1": 100.0,
+      "rate_exec2": 0.0,
+      "delta_pp": 100.0,
+      "test": "fisher_exact",
+      "p": 1.5821457204897235e-14,
+      "p_holm": 3.1642914409794467e-13,
+      "significant": true
+    },
+    {
+      "model": "Claude Sonnet 4.5",
+      "topology": "linear",
+      "rate_exec1": 68.0,
+      "rate_exec2": 60.0,
+      "delta_pp": 8.0,
+      "test": "fisher_exact",
+      "p": 0.7688126860130922,
+      "p_holm": 1.0,
+      "significant": false
+    },
+    {
+      "model": "Claude Sonnet 4.5",
+      "topology": "star",
+      "rate_exec1": 56.0,
+      "rate_exec2": 56.0,
+      "delta_pp": 0.0,
+      "test": "fisher_exact",
+      "p": 1.0,
+      "p_holm": 1.0,
+      "significant": false
+    },
+    {
+      "model": "Claude Sonnet 4.5",
+      "topology": "ring",
+      "rate_exec1": 52.0,
+      "rate_exec2": 76.0,
+      "delta_pp": 24.0,
+      "test": "fisher_exact",
+      "p": 0.13978538464122753,
+      "p_holm": 1.0,
+      "significant": false
+    },
+    {
+      "model": "Claude Sonnet 4.5",
+      "topology": "tree",
+      "rate_exec1": 68.0,
+      "rate_exec2": 80.0,
+      "delta_pp": 12.0,
+      "test": "fisher_exact",
+      "p": 0.5201947495547621,
+      "p_holm": 1.0,
+      "significant": false
+    },
+    {
+      "model": "Claude Sonnet 4.5",
+      "topology": "mesh",
+      "rate_exec1": 68.0,
+      "rate_exec2": 16.0,
+      "delta_pp": 52.0,
+      "test": "fisher_exact",
+      "p": 0.0004408901723720828,
+      "p_holm": 0.00793602310269749,
+      "significant": true
+    },
+    {
+      "model": "Gemini 2.5 Flash",
+      "topology": "linear",
+      "rate_exec1": 68.0,
+      "rate_exec2": 68.0,
+      "delta_pp": 0.0,
+      "test": "fisher_exact",
+      "p": 1.0,
+      "p_holm": 1.0,
+      "significant": false
+    },
+    {
+      "model": "Gemini 2.5 Flash",
+      "topology": "star",
+      "rate_exec1": 8.0,
+      "rate_exec2": 40.0,
+      "delta_pp": 32.0,
+      "test": "fisher_exact",
+      "p": 0.018076877323084828,
+      "p_holm": 0.2711531598462724,
+      "significant": false
+    },
+    {
+      "model": "Gemini 2.5 Flash",
+      "topology": "ring",
+      "rate_exec1": 36.0,
+      "rate_exec2": 36.0,
+      "delta_pp": 0.0,
+      "test": "fisher_exact",
+      "p": 1.0,
+      "p_holm": 1.0,
+      "significant": false
+    },
+    {
+      "model": "Gemini 2.5 Flash",
+      "topology": "tree",
+      "rate_exec1": 16.0,
+      "rate_exec2": 12.0,
+      "delta_pp": 4.0,
+      "test": "fisher_exact",
+      "p": 1.0,
+      "p_holm": 1.0,
+      "significant": false
+    },
+    {
+      "model": "Gemini 2.5 Flash",
+      "topology": "mesh",
+      "rate_exec1": 48.0,
+      "rate_exec2": 4.0,
+      "delta_pp": 44.0,
+      "test": "fisher_exact",
+      "p": 0.0007620334915443592,
+      "p_holm": 0.012954569356254107,
+      "significant": true
+    },
+    {
+      "model": "Gemini 3.5 Flash",
+      "topology": "linear",
+      "rate_exec1": 24.0,
+      "rate_exec2": 12.0,
+      "delta_pp": 12.0,
+      "test": "fisher_exact",
+      "p": 0.4634904926839613,
+      "p_holm": 1.0,
+      "significant": false
+    },
+    {
+      "model": "Gemini 3.5 Flash",
+      "topology": "star",
+      "rate_exec1": 44.0,
+      "rate_exec2": 56.0,
+      "delta_pp": 12.0,
+      "test": "fisher_exact",
+      "p": 0.5721384328091685,
+      "p_holm": 1.0,
+      "significant": false
+    },
+    {
+      "model": "Gemini 3.5 Flash",
+      "topology": "ring",
+      "rate_exec1": 4.0,
+      "rate_exec2": 4.0,
+      "delta_pp": 0.0,
+      "test": "fisher_exact",
+      "p": 1.0,
+      "p_holm": 1.0,
+      "significant": false
+    },
+    {
+      "model": "Gemini 3.5 Flash",
+      "topology": "tree",
+      "rate_exec1": 16.0,
+      "rate_exec2": 24.0,
+      "delta_pp": 8.0,
+      "test": "fisher_exact",
+      "p": 0.725202447472273,
+      "p_holm": 1.0,
+      "significant": false
+    },
+    {
+      "model": "Gemini 3.5 Flash",
+      "topology": "mesh",
+      "rate_exec1": 36.0,
+      "rate_exec2": 80.0,
+      "delta_pp": 44.0,
+      "test": "fisher_exact",
+      "p": 0.003665229371240721,
+      "p_holm": 0.05864366993985154,
+      "significant": false
+    }
+  ],
+  "rq4_defense_vs_baseline": [
+    {
+      "defense": "Majority voting",
+      "rate": 78.4,
+      "n": 125,
+      "baseline_rate": 30.0,
+      "test": "pearson_chi2",
+      "p": 7.779662719659202e-19,
+      "odds_ratio_baseline_to_defense": 0.118,
+      "min_expected": 57.7,
+      "p_holm": 2.3338988158977605e-18,
+      "significant": true
+    },
+    {
+      "defense": "Reputation",
+      "rate": 83.2,
+      "n": 125,
+      "baseline_rate": 30.0,
+      "test": "pearson_chi2",
+      "p": 2.407221637291833e-22,
+      "odds_ratio_baseline_to_defense": 0.087,
+      "min_expected": 59.7,
+      "p_holm": 9.628886549167332e-22,
+      "significant": true
+    },
+    {
+      "defense": "Confidence-weighted",
+      "rate": 71.2,
+      "n": 125,
+      "baseline_rate": 30.0,
+      "test": "pearson_chi2",
+      "p": 3.406839670736901e-14,
+      "odds_ratio_baseline_to_defense": 0.173,
+      "min_expected": 54.7,
+      "p_holm": 6.813679341473802e-14,
+      "significant": true
+    },
+    {
+      "defense": "Trust clipping",
+      "rate": 27.2,
+      "n": 125,
+      "baseline_rate": 30.0,
+      "test": "pearson_chi2",
+      "p": 0.573491187960592,
+      "odds_ratio_baseline_to_defense": 1.147,
+      "min_expected": 36.3,
+      "p_holm": 0.573491187960592,
+      "significant": false
+    }
+  ]
+}

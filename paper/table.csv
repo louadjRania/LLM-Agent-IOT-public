@@ -1,0 +1,41 @@
+block,model,topology,succ_exec1,succ_exec2,n_per_exec,rate_exec1,rate_exec2,delta_pp,rate_pooled,wilson_lo,wilson_hi,impact_P
+baseline,GPT-5.5,linear,25,25,25,100.0,100.0,0.0,100.0,92.9,100.0,6.14
+baseline,GPT-5.5,star,25,25,25,100.0,100.0,0.0,100.0,92.9,100.0,6.5
+baseline,GPT-5.5,ring,25,24,25,100.0,96.0,4.0,98.0,89.5,99.6,6.13
+baseline,GPT-5.5,tree,25,0,25,100.0,0.0,100.0,50.0,36.6,63.4,1.75
+baseline,GPT-5.5,mesh,25,0,25,100.0,0.0,100.0,50.0,36.6,63.4,3.25
+baseline,Claude Sonnet 4.5,linear,17,15,25,68.0,60.0,8.0,64.0,50.1,75.9,5.66
+baseline,Claude Sonnet 4.5,star,14,14,25,56.0,56.0,0.0,56.0,42.3,68.8,5.64
+baseline,Claude Sonnet 4.5,ring,13,19,25,52.0,76.0,24.0,64.0,50.1,75.9,5.63
+baseline,Claude Sonnet 4.5,tree,17,20,25,68.0,80.0,12.0,74.0,60.4,84.1,3.04
+baseline,Claude Sonnet 4.5,mesh,17,4,25,68.0,16.0,52.0,42.0,29.4,55.8,3.57
+baseline,Gemini 2.5 Flash,linear,17,17,25,68.0,68.0,0.0,68.0,54.2,79.2,3.7
+baseline,Gemini 2.5 Flash,star,2,10,25,8.0,40.0,32.0,24.0,14.3,37.4,0.78
+baseline,Gemini 2.5 Flash,ring,9,9,25,36.0,36.0,0.0,36.0,24.1,49.9,1.98
+baseline,Gemini 2.5 Flash,tree,4,3,25,16.0,12.0,4.0,14.0,7.0,26.2,0.31
+baseline,Gemini 2.5 Flash,mesh,12,1,25,48.0,4.0,44.0,26.0,15.9,39.6,1.36
+baseline,Gemini 3.5 Flash,linear,6,3,25,24.0,12.0,12.0,18.0,9.8,30.8,0.93
+baseline,Gemini 3.5 Flash,star,11,14,25,44.0,56.0,12.0,50.0,36.6,63.4,1.87
+baseline,Gemini 3.5 Flash,ring,1,1,25,4.0,4.0,0.0,4.0,1.1,13.5,0.26
+baseline,Gemini 3.5 Flash,tree,4,6,25,16.0,24.0,8.0,20.0,11.2,33.0,0.52
+baseline,Gemini 3.5 Flash,mesh,9,20,25,36.0,80.0,44.0,58.0,44.2,70.6,3.17
+defense,Majority voting,linear,15,,25,60.0,,,60.0,40.7,76.6,0.86
+defense,Majority voting,star,24,,25,96.0,,,96.0,80.5,99.3,1.44
+defense,Majority voting,ring,20,,25,80.0,,,80.0,60.9,91.1,1.56
+defense,Majority voting,tree,16,,25,64.0,,,64.0,44.5,79.8,0.98
+defense,Majority voting,mesh,23,,25,92.0,,,92.0,75.0,97.8,3.28
+defense,Reputation,linear,19,,25,76.0,,,76.0,56.6,88.5,0.54
+defense,Reputation,star,24,,25,96.0,,,96.0,80.5,99.3,1.78
+defense,Reputation,ring,18,,25,72.0,,,72.0,52.4,85.7,0.54
+defense,Reputation,tree,22,,25,88.0,,,88.0,70.0,95.8,0.82
+defense,Reputation,mesh,21,,25,84.0,,,84.0,65.3,93.6,2.8
+defense,Confidence-weighted,linear,14,,25,56.0,,,56.0,37.1,73.3,0.28
+defense,Confidence-weighted,star,21,,25,84.0,,,84.0,65.3,93.6,1.86
+defense,Confidence-weighted,ring,17,,25,68.0,,,68.0,48.4,82.8,0.36
+defense,Confidence-weighted,tree,21,,25,84.0,,,84.0,65.3,93.6,1.12
+defense,Confidence-weighted,mesh,16,,25,64.0,,,64.0,44.5,79.8,2.12
+defense,Trust clipping,linear,1,,25,4.0,,,4.0,0.7,19.5,0.2
+defense,Trust clipping,star,13,,25,52.0,,,52.0,33.5,70.0,1.4
+defense,Trust clipping,ring,3,,25,12.0,,,12.0,4.2,30.0,0.72
+defense,Trust clipping,tree,7,,25,28.0,,,28.0,14.3,47.6,0.74
+defense,Trust clipping,mesh,10,,25,40.0,,,40.0,23.4,59.3,2.18
