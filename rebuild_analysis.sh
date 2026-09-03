@@ -13,7 +13,8 @@
 # What it produces:
 #   data/analysis/*.json     12 curated files, physical_impact corrected
 #   data/analysis/README.md  what was included, excluded, and why
-#   data/master_table.csv    Model x Topology x Execution summary
+#
+# Statistics, tables and figures come afterwards, from paper_analysis.py.
 #
 set -euo pipefail
 
@@ -24,7 +25,7 @@ WORK=".rebuild_tmp"
 rm -rf "$WORK" data/analysis
 mkdir -p "$WORK/raw" data/analysis
 
-echo "[1/4] Extracting the 12 genuine executions from all_runs.zip"
+echo "[1/3] Extracting the 12 genuine executions from all_runs.zip"
 FILES=(
   20260714_195521   # GPT-5.5            exec 1
   20260716_214008   # GPT-5.5            exec 2
@@ -44,12 +45,12 @@ for f in "${FILES[@]}"; do
 done
 echo "      $(ls -1 "$WORK/raw" | wc -l) files extracted"
 
-echo "[2/4] Correcting physical_impact (star-hub double counting)"
+echo "[2/3] Correcting physical_impact (star-hub double counting)"
 # NOTE: physical_impact.py only globs cascade_results_*.json, so the rename
 # has to happen AFTER this step, never before.
 python3 physical_impact.py --in "$WORK/raw" --out "$WORK/fixed"
 
-echo "[3/4] Renaming into data/analysis/"
+echo "[3/3] Renaming into data/analysis/"
 python3 - "$WORK/fixed" << 'PY'
 import shutil, sys, pathlib
 src = pathlib.Path(sys.argv[1])
@@ -62,87 +63,6 @@ M = {'20260714_195521':'gpt55_exec1',      '20260716_214008':'gpt55_exec2',
 for k, v in M.items():
     shutil.copy(src / f'cascade_results_{k}.json', f'data/analysis/{v}.json')
 print(f'      {len(M)} files written')
-PY
-
-echo "[4/4] Building data/master_table.csv"
-python3 - << 'PY'
-import json, csv, statistics, math
-
-TOPS = ['linear', 'star', 'ring', 'tree', 'mesh']
-BASE = {'GPT-5.5':           ('gpt55_exec1',    'gpt55_exec2'),
-        'Claude Sonnet 4.5': ('claude45_exec1', 'claude45_exec2'),
-        'Gemini 2.5 Flash':  ('gemini25_exec1', 'gemini25_exec2'),
-        'Gemini 3.5 Flash':  ('gemini35_exec1', 'gemini35_exec2')}
-DEF  = {'Majority Voting': 'defense_majority', 'Reputation':     'defense_reputation',
-        'Conf.-Weighted':  'defense_confidence','Trust Clipping': 'defense_trust'}
-
-try:
-    from scipy.stats import fisher_exact
-    HAVE_SCIPY = True
-except ImportError:
-    HAVE_SCIPY = False
-    print('      WARNING: scipy not installed, fisher_p / holm_p left empty')
-    print('               fix with: pip install scipy')
-
-def load(name):
-    with open(f'data/analysis/{name}.json') as fh:
-        return json.load(fh)['results']
-
-def cell(res, topo):
-    a = [r for r in res if r['topology'] == topo and r['under_attack']]
-    return (sum(1 for r in a if r['attack_succeeded']), len(a),
-            statistics.mean(r['physical_impact'] for r in a))
-
-def wilson(k, n, z=1.959963985):
-    """Wilson score interval in percent (same formula as analysis.py:83)."""
-    p = k / n
-    d = 1 + z * z / n
-    c = (p + z * z / (2 * n)) / d
-    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
-    return 100 * max(0.0, c - h), 100 * min(1.0, c + h)
-
-rows, pvals = [], []
-for model, (f1, f2) in BASE.items():
-    r1, r2 = load(f1), load(f2)
-    for t in TOPS:
-        s1, n1, p1 = cell(r1, t)
-        s2, n2, p2 = cell(r2, t)
-        lo, hi = wilson(s1 + s2, n1 + n2)
-        pv = fisher_exact([[s1, n1 - s1], [s2, n2 - s2]])[1] if HAVE_SCIPY else ''
-        pvals.append(pv)
-        rows.append(dict(block='baseline', model=model, topology=t,
-                         succ_e1=s1, n_e1=n1, succ_e2=s2, n_e2=n2,
-                         rate_e1=round(100 * s1 / n1, 1), rate_e2=round(100 * s2 / n2, 1),
-                         delta_pp=round(abs(100 * s1 / n1 - 100 * s2 / n2), 1),
-                         rate_pooled=round(100 * (s1 + s2) / (n1 + n2), 1),
-                         wilson_lo=round(lo, 1), wilson_hi=round(hi, 1),
-                         P_e1=round(p1, 2), P_e2=round(p2, 2),
-                         fisher_p=pv, holm_p=''))
-
-# Holm step-down over the 20 baseline comparisons
-if HAVE_SCIPY:
-    order, running = sorted(range(len(pvals)), key=lambda i: pvals[i]), 0.0
-    for rank, i in enumerate(order):
-        running = max(running, min(1.0, (len(pvals) - rank) * pvals[i]))
-        rows[i]['holm_p'] = running
-
-for label, fname in DEF.items():
-    res = load(fname)
-    for t in TOPS:
-        s, n, pi = cell(res, t)
-        lo, hi = wilson(s, n)
-        rows.append(dict(block='defense', model=label, topology=t,
-                         succ_e1=s, n_e1=n, succ_e2='', n_e2='',
-                         rate_e1=round(100 * s / n, 1), rate_e2='', delta_pp='',
-                         rate_pooled=round(100 * s / n, 1),
-                         wilson_lo=round(lo, 1), wilson_hi=round(hi, 1),
-                         P_e1=round(pi, 2), P_e2='', fisher_p='', holm_p=''))
-
-with open('data/master_table.csv', 'w', newline='') as fh:
-    w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
-    w.writeheader()
-    w.writerows(rows)
-print(f'      {len(rows)} rows written')
 PY
 
 cat > data/analysis/README.md << 'EOF'
@@ -196,6 +116,6 @@ rm -rf "$WORK"
 
 echo
 echo "Done."
-echo "  data/analysis/       $(ls -1 data/analysis/*.json | wc -l) json files + README.md"
-echo "  data/master_table.csv"
-echo "  data/results/        untouched"
+echo "  data/analysis/  $(ls -1 data/analysis/*.json | wc -l) json files + README.md"
+echo
+echo "Next: python3 paper_analysis.py"
