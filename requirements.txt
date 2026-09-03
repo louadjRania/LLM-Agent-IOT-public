@@ -1,0 +1,21 @@
+# IoT Communication
+paho-mqtt
+requests
+
+# Environment variables
+python-dotenv
+
+# Multi-agent framework
+autogen-agentchat==0.7.5
+autogen-core==0.7.5
+
+# Model client extras (multi-LLM support: GPT-5.4-mini, GPT-5.5,
+# Claude Sonnet 4.5, Gemini 2.5 Flash, Gemini 3.5 Flash via the
+# OpenAI-compatible endpoint)
+autogen-ext[openai]
+autogen-ext[anthropic]
+
+# Figure generation (analysis.py)
+matplotlib
+numpy
+scipy

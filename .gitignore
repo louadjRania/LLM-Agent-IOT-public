@@ -1,0 +1,26 @@
+# Secrets — never commit
+.env
+.env.local
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+
+# Runtime artefacts
+latest_data.json
+.rebuild_tmp/
