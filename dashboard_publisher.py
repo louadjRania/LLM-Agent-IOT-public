@@ -1,36 +1,3 @@
-"""
-dashboard_publisher.py
-
-Real-time ThingsBoard dashboard publisher for the
-Hallucination Cascade Benchmark.
-
-Publishes three parallel data streams to ThingsBoard:
-
-    Stream 1 — Machine_A_Falsified
-        The falsified sensor values sent to LLM agents
-        by the adaptive AiTM attacker. Displayed alongside
-        real values to show the manipulation in real time.
-
-    Stream 2 — Cascade_Status
-        Per-agent contamination state h_i(t) at each turn.
-        Shows which agents currently hold false beliefs and
-        the propagation path as it unfolds.
-
-    Stream 3 — Attack_Monitor
-        Attack metadata: current strategy, success rate,
-        detection rate, run number, topology name.
-
-This enables a live conference demonstration where the
-audience watches the cascade propagate across the agent
-network in real time on the ThingsBoard dashboard.
-
-Usage:
-    publisher = DashboardPublisher()
-    publisher.publish_falsified_data(falsified, original)
-    publisher.publish_cascade_state(decisions, topology, run)
-    publisher.publish_attack_metadata(attacker, run, topology)
-"""
-
 import json
 import logging
 import os

@@ -1,31 +1,4 @@
 #!/usr/bin/env python3
-"""
-paper_analysis.py
-=================
-
-Everything the paper needs, and nothing else.
-
-    python paper_analysis.py
-
-Reads   : data/analysis/*.json   (produced by rebuild_analysis.sh)
-Writes  : paper/table.csv        one row per condition, every reported number
-          paper/stats.json       every statistical test, with its p-value
-          paper/fig1_attack_success.png  (and .pdf)
-          paper/fig2_run_variability.png (and .pdf)
-          paper/fig3_physical_impact.png (and .pdf)
-          paper/fig4_defenses.png        (and .pdf)
-          + a console summary listing the values to paste into the LaTeX
-
-Four tests, one per research question. No exploratory extras.
-
-  RQ1  topology effect within each backbone      Pearson chi-square, 5x2, df=4
-  RQ2  execution-to-execution heterogeneity      Fisher exact, 25 vs 25, Holm over 20
-  RQ3  physical impact vs attack success         descriptive only (see NOTE)
-  RQ4  each defense against the no-defense base  Pearson chi-square, Holm over 4
-
-NOTE on RQ3: P is zero-inflated and multimodal, so it is reported as a mean
-with the runs behind it, never tested. The paper says this explicitly.
-"""
 
 from __future__ import annotations
 
@@ -260,93 +233,94 @@ def fig2_run_variability(per_exec: dict, tests: list[dict]) -> None:
     mean the topology ordering itself changed between executions."""
     sig = {(r["model"], r["topology"]): r["significant"] for r in tests}
 
-    fig, axes = plt.subplots(1, 4, figsize=(IEEE_WIDE, 2.5), sharey=True)
-    for ax, model in zip(axes, MODELS):
+    fig, axes = plt.subplots(2, 2, figsize=(IEEE_COL, 3.6), sharey=True,
+                             sharex=True)
+    for ax, model in zip(axes.ravel(), MODELS):
         starts = [per_exec[model][t][0]["rate"] for t in TOPOLOGIES]
-        label_y = _spread(starts, gap=7.0, lo=0.0, hi=100.0)
+        label_y = _spread(starts, gap=11.0, lo=0.0, hi=100.0)
 
         seen: set[tuple[float, float]] = set()
         for j, t in enumerate(TOPOLOGIES):
-            a, b = per_exec[model][t]
+            a_, b_ = per_exec[model][t]
             significant = sig[(model, t)]
-            # Two topologies can trace exactly the same line. Dash the second
-            # one so both remain visible, without moving either value.
-            key = (a["rate"], b["rate"])
-            style = (0, (4, 2)) if key in seen else "solid"
+            key = (a_["rate"], b_["rate"])
+            style = (0, (3, 2)) if key in seen else "solid"
             seen.add(key)
-            ax.plot([0, 1], [a["rate"], b["rate"]],
+            ax.plot([0, 1], [a_["rate"], b_["rate"]],
                     color=COLOURS[j], linestyle=style,
-                    linewidth=2.0 if significant else 1.0,
+                    linewidth=1.8 if significant else 0.9,
                     alpha=1.0 if significant else 0.55,
-                    marker="o", markersize=3.2, zorder=2)
-            ax.text(-0.10, label_y[j], t, ha="right", va="center", fontsize=6,
+                    marker="o", markersize=2.6, zorder=2)
+            ax.text(-0.12, label_y[j], t, ha="right", va="center", fontsize=5.2,
                     color=COLOURS[j],
                     fontweight="bold" if significant else "normal")
 
-        ax.set_title(model, fontsize=7.5, pad=4)
-        ax.set_xlim(-0.62, 1.12)
+        ax.set_title(model, fontsize=6.5, pad=3)
+        ax.set_xlim(-0.78, 1.10)
         ax.set_xticks([0, 1])
-        ax.set_xticklabels(["Exec 1", "Exec 2"], fontsize=7)
-        ax.set_ylim(-5, 105)
+        ax.set_xticklabels(["Exec 1", "Exec 2"], fontsize=6)
+        ax.set_ylim(-6, 106)
+        ax.set_yticks([0, 25, 50, 75, 100])
+        ax.tick_params(labelsize=6)
         ax.grid(axis="y", linewidth=0.3, alpha=0.4)
         ax.set_axisbelow(True)
-        ax.spines["bottom"].set_linewidth(0.6)
 
-    axes[0].set_ylabel("Attack success rate (%)")
-    fig.text(0.5, -0.06,
-             "Bold lines mark conditions whose two executions differ "
-             "significantly (Fisher, Holm-adjusted, $p<0.05$).",
-             ha="center", fontsize=6.5, color="#444444")
-    fig.tight_layout()
+    for ax in axes[:, 0]:
+        ax.set_ylabel("Attack success (%)", fontsize=6.5)
+    fig.tight_layout(pad=0.4, h_pad=1.0, w_pad=0.6)
     save(fig, "fig2_run_variability")
 
 
-def fig3_physical_impact(cells: dict) -> None:
-    """RQ3. Attack success against role-weighted impact, one marker per
-    condition, coloured by backbone. The callouts mark the conditions the
-    text discusses: identical success rates with unequal severity."""
-    from scipy.stats import spearmanr
+def fig3_impact_vs_success(cells: dict) -> None:
+    """RQ2. All twenty conditions, sorted by attack success. If the two
+    measures were equivalent the right-hand bars would also decrease
+    monotonically. They do not, and each place where they rise is a
+    condition whose severity does not follow its frequency."""
+    rows = sorted(
+        ((model, t, cells[model][t]["rate"], cells[model][t]["impact"])
+         for model in MODELS for t in TOPOLOGIES),
+        key=lambda r: -r[2])
+    colour_of = dict(zip(MODELS, COLOURS))
 
-    fig, ax = plt.subplots(figsize=(IEEE_COL, 2.7))
-    for i, model in enumerate(MODELS):
-        xs = [cells[model][t]["rate"] for t in TOPOLOGIES]
-        ys = [cells[model][t]["impact"] for t in TOPOLOGIES]
-        ax.scatter(xs, ys, s=22, color=COLOURS[i], label=model,
-                   edgecolor="white", linewidth=0.4, zorder=2)
+    y = np.arange(len(rows))[::-1]
+    rates = [r[2] for r in rows]
+    impacts = [r[3] for r in rows]
+    bar_colours = [colour_of[r[0]] for r in rows]
+    labels = [f"{r[0].replace(' Sonnet', '').replace(' Flash', '')}  {r[1]}"
+              for r in rows]
 
-    # Leader lines so a label cannot be read against a neighbouring marker.
-    arrow = dict(arrowstyle="-", linewidth=0.5, color="#666666",
-                 shrinkA=0, shrinkB=2)
-    for model, t, label, xy_text in [
-        ("GPT-5.5",           "tree",   "GPT-5.5 tree",   (20.0, 1.55)),
-        ("GPT-5.5",           "mesh",   "GPT-5.5 mesh",   (18.0, 3.95)),
-        ("Claude Sonnet 4.5", "linear", "Claude linear",  (40.0, 6.30)),
-        ("Claude Sonnet 4.5", "tree",   "Claude tree",    (80.0, 1.90)),
-    ]:
-        c = cells[model][t]
-        ax.annotate(label, xy=(c["rate"], c["impact"]), xytext=xy_text,
-                    fontsize=6, color="#444444", va="center",
-                    arrowprops=arrow, zorder=4)
+    fig, (left, right) = plt.subplots(
+        1, 2, figsize=(IEEE_COL, 3.9), sharey=True,
+        gridspec_kw={"wspace": 0.10})
 
-    # Delete the next three lines if you do not want rho on the figure.
-    rates = [cells[m][t]["rate"] for m in MODELS for t in TOPOLOGIES]
-    impacts = [cells[m][t]["impact"] for m in MODELS for t in TOPOLOGIES]
-    ax.text(0.97, 0.05, rf"Spearman $\rho$ = {spearmanr(rates, impacts)[0]:.2f}",
-            transform=ax.transAxes, ha="right", fontsize=6, color="#666666")
+    left.barh(y, rates, height=0.62, color=bar_colours, zorder=2)
+    left.set_xlim(0, 100)
+    left.invert_xaxis()                    # bars grow away from the centre
+    left.set_xticks([0, 50, 100])
+    left.set_xlabel("Attack success (%)", fontsize=7.5)
+    left.set_yticks(y)
+    left.set_yticklabels(labels, fontsize=6.2)
+    left.tick_params(axis="y", length=0, pad=3)
 
-    ax.set_xlabel("Attack success rate (%)")
-    ax.set_ylabel("Physical impact $P$")
-    ax.grid(linewidth=0.3, alpha=0.4)
-    ax.set_axisbelow(True)
-    ax.legend(frameon=False, loc="upper left", fontsize=6)
-    fig.tight_layout()
-    save(fig, "fig3_physical_impact")
+    right.barh(y, impacts, height=0.62, color=bar_colours, zorder=2)
+    right.set_xlim(0, max(impacts) * 1.06)
+    right.set_xticks([0, 2, 4, 6])
+    right.set_xlabel("Operational impact $P$", fontsize=7.5)
+    right.tick_params(axis="y", length=0)
+
+    for ax in (left, right):
+        ax.grid(axis="x", linewidth=0.3, alpha=0.5)
+        ax.set_axisbelow(True)
+        ax.spines["left"].set_visible(False)
+        ax.tick_params(labelsize=7)
+
+    save(fig, "fig3_impact_vs_success")
 
 
 def fig4_defenses(cells: dict, defense_cells: dict) -> None:
     """RQ4. Baseline against each defense, per topology."""
     fig, ax = plt.subplots(figsize=(IEEE_WIDE, 2.6))
-    series = [("No defense", {t: cells[DEFENSE_BASELINE][t] for t in TOPOLOGIES})]
+    series = [("No defence", {t: cells[DEFENSE_BASELINE][t] for t in TOPOLOGIES})]
     series += [(label, defense_cells[label]) for label in DEFENSES]
 
     width = 0.16
@@ -431,7 +405,7 @@ def main() -> None:
 
     fig1_attack_success(cells)
     fig2_run_variability(per_exec, tests["rq2_execution_heterogeneity"])
-    fig3_physical_impact(cells)
+    fig3_impact_vs_success(cells)
     fig4_defenses(cells, defense_cells)
 
     # ── Console summary: the numbers to paste into the LaTeX ────────────────
