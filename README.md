@@ -1,6 +1,5 @@
 # LLM-Agent-IoT 
-# Topology Matters: Measuring Misinformation Cascade Dynamics
-# in LLM-Based Multi-Agent IoT Systems
+# Misinformation Propagation and Operational Risk in LLM-Based Multi-Agent IoT Systems
 
 ## Research Question
 How does network topology affect the speed, amplitude, and physical impact of misinformation cascades in LLM-based multi-agent IoT systems — and which defense mechanisms, if any, actually reduce attack success?
