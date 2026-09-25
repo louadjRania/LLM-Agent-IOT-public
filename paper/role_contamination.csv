@@ -1,0 +1,21 @@
+model,topology,n,c_SensorAgent,c_MonitorAgent,c_SchedulerAgent,c_ActuatorAgent,c_SupervisorAgent,impact_P
+GPT-5.5,linear,50,0.0,0.0,1.0,1.0,0.78,6.17
+GPT-5.5,star,50,0.0,0.0,1.0,1.0,1.0,6.5
+GPT-5.5,ring,50,0.0,0.0,1.0,1.0,0.82,6.23
+GPT-5.5,tree,50,0.0,0.0,1.0,0.0,1.0,3.5
+GPT-5.5,mesh,50,0.0,0.0,1.0,1.0,0.98,6.47
+Claude Sonnet 4.5,linear,50,0.0,0.0,0.64,0.96,1.0,5.66
+Claude Sonnet 4.5,star,50,0.0,0.14,0.56,0.96,1.0,5.64
+Claude Sonnet 4.5,ring,50,0.0,0.0,0.64,0.96,0.98,5.63
+Claude Sonnet 4.5,tree,50,0.0,0.0,0.74,0.02,1.0,3.04
+Claude Sonnet 4.5,mesh,31,0.0,0.0,0.677,0.968,1.0,5.758
+Gemini 2.5 Flash,linear,50,0.0,0.0,0.68,0.68,0.2,3.7
+Gemini 2.5 Flash,star,50,0.0,0.0,0.24,0.04,0.12,0.78
+Gemini 2.5 Flash,ring,50,0.0,0.0,0.36,0.36,0.12,1.98
+Gemini 2.5 Flash,tree,50,0.0,0.0,0.14,0.0,0.02,0.31
+Gemini 2.5 Flash,mesh,50,0.0,0.0,0.26,0.26,0.04,1.36
+Gemini 3.5 Flash,linear,48,0.0,0.0,0.188,0.188,0.021,0.969
+Gemini 3.5 Flash,star,50,0.0,0.0,0.5,0.16,0.26,1.87
+Gemini 3.5 Flash,ring,46,0.0,0.0,0.043,0.065,0.0,0.283
+Gemini 3.5 Flash,tree,48,0.0,0.0,0.208,0.0,0.083,0.542
+Gemini 3.5 Flash,mesh,49,0.0,0.0,0.592,0.592,0.184,3.235

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 
 from __future__ import annotations
 
@@ -12,7 +11,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import chi2_contingency, fisher_exact
+from scipy.stats import chi2_contingency, fisher_exact, spearmanr
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
@@ -58,11 +57,8 @@ plt.rcParams.update({
 IEEE_WIDE = 7.16   # inches, full two-column width
 IEEE_COL = 3.45    # inches, single column
 
-# Output formats. PNG is easy to open and preview; PDF is vector and stays
-# sharp at any zoom, which is what IEEE prefers. Both work with LaTeX.
-# Keep only "png" here if you do not want the PDF copies.
-FORMATS = ["png", "pdf"]
-FIGURE_DPI = 400          # only affects the PNG copies
+FORMATS = ["png", "pdf"]   # PDF (vector) is preferred by IEEE
+FIGURE_DPI = 400           # PNG only
 
 
 def save(fig, name: str) -> None:
@@ -71,6 +67,7 @@ def save(fig, name: str) -> None:
         fig.savefig(OUT / f"{name}.{extension}", bbox_inches="tight",
                     dpi=FIGURE_DPI)
     plt.close(fig)
+
 
 # ── Statistics ───────────────────────────────────────────────────────────────
 
@@ -94,124 +91,6 @@ def holm(pvalues: list[float]) -> list[float]:
     return adjusted
 
 
-# ── Loading ──────────────────────────────────────────────────────────────────
-
-def attacked_runs(name: str, topology: str) -> list[dict]:
-    with open(DATA / f"{name}.json") as fh:
-        results = json.load(fh)["results"]
-    return [r for r in results
-            if r["topology"] == topology and r["under_attack"]]
-
-
-def condition(name: str, topology: str) -> dict:
-    runs = attacked_runs(name, topology)
-    successes = sum(1 for r in runs if r["attack_succeeded"])
-    return {
-        "successes": successes,
-        "n": len(runs),
-        "rate": 100 * successes / len(runs),
-        "impact": statistics.mean(r["physical_impact"] for r in runs),
-    }
-
-
-# ── RQ1: does topology matter within a backbone? ─────────────────────────────
-
-def rq1(cells: dict) -> list[dict]:
-    out = []
-    for model in MODELS:
-        table = np.array([[cells[model][t]["successes"],
-                           cells[model][t]["n"] - cells[model][t]["successes"]]
-                          for t in TOPOLOGIES])
-        chi2, p, dof, expected = chi2_contingency(table, correction=False)
-        out.append({"model": model, "test": "pearson_chi2",
-                    "chi2": round(float(chi2), 2), "df": int(dof),
-                    "p": float(p), "min_expected": round(float(expected.min()), 1)})
-    return out
-
-
-# ── RQ2: do the two executions agree? ────────────────────────────────────────
-
-def rq2(per_exec: dict) -> list[dict]:
-    out, raw = [], []
-    for model in MODELS:
-        for t in TOPOLOGIES:
-            a, b = per_exec[model][t]
-            _, p = fisher_exact([[a["successes"], a["n"] - a["successes"]],
-                                 [b["successes"], b["n"] - b["successes"]]])
-            raw.append(float(p))
-            out.append({"model": model, "topology": t,
-                        "rate_exec1": round(a["rate"], 1),
-                        "rate_exec2": round(b["rate"], 1),
-                        "delta_pp": round(abs(a["rate"] - b["rate"]), 1),
-                        "test": "fisher_exact", "p": float(p)})
-    for row, adj in zip(out, holm(raw)):
-        row["p_holm"] = adj
-        row["significant"] = adj < 0.05
-    return out
-
-
-# ── RQ4: does each defense help? ─────────────────────────────────────────────
-
-def rq4(cells: dict, defense_cells: dict) -> list[dict]:
-    base_s = sum(cells[DEFENSE_BASELINE][t]["successes"] for t in TOPOLOGIES)
-    base_n = sum(cells[DEFENSE_BASELINE][t]["n"] for t in TOPOLOGIES)
-
-    out, raw = [], []
-    for label in DEFENSES:
-        s = sum(defense_cells[label][t]["successes"] for t in TOPOLOGIES)
-        n = sum(defense_cells[label][t]["n"] for t in TOPOLOGIES)
-        table = np.array([[base_s, base_n - base_s], [s, n - s]])
-        chi2, p_chi, _, expected = chi2_contingency(table, correction=False)
-        odds, p_fisher = fisher_exact(table)
-        # chi-square is valid here; Fisher is the fallback for sparse tables
-        sparse = expected.min() < 5
-        raw.append(float(p_fisher if sparse else p_chi))
-        out.append({"defense": label,
-                    "rate": round(100 * s / n, 1), "n": n,
-                    "baseline_rate": round(100 * base_s / base_n, 1),
-                    "test": "fisher_exact" if sparse else "pearson_chi2",
-                    "p": float(p_fisher if sparse else p_chi),
-                    "odds_ratio_baseline_to_defense": round(float(odds), 3),
-                    "min_expected": round(float(expected.min()), 1)})
-    for row, adj in zip(out, holm(raw)):
-        row["p_holm"] = adj
-        row["significant"] = adj < 0.05
-    return out
-
-
-# ── Figures ──────────────────────────────────────────────────────────────────
-
-def fig1_attack_success(cells: dict) -> None:
-    """RQ1. Grouped bars, Wilson 95% CI, one group per topology."""
-    fig, ax = plt.subplots(figsize=(IEEE_WIDE, 2.6))
-    width = 0.2
-    x = np.arange(len(TOPOLOGIES))
-
-    for i, model in enumerate(MODELS):
-        rates, lo, hi = [], [], []
-        for t in TOPOLOGIES:
-            c = cells[model][t]
-            rates.append(c["rate"])
-            a, b = wilson(c["successes"], c["n"])
-            lo.append(c["rate"] - a)
-            hi.append(b - c["rate"])
-        ax.bar(x + (i - 1.5) * width, rates, width, label=model,
-               color=COLOURS[i], edgecolor="white", linewidth=0.4)
-        ax.errorbar(x + (i - 1.5) * width, rates, yerr=[lo, hi],
-                    fmt="none", ecolor="#333333", elinewidth=0.7, capsize=1.6)
-
-    ax.set_xticks(x)
-    ax.set_xticklabels([t.capitalize() for t in TOPOLOGIES])
-    ax.set_ylabel("Attack success rate (%)")
-    ax.set_ylim(0, 108)
-    ax.legend(ncol=4, frameon=False, loc="upper center",
-              bbox_to_anchor=(0.5, 1.22))
-    ax.grid(axis="y", linewidth=0.3, alpha=0.4)
-    ax.set_axisbelow(True)
-    fig.tight_layout()
-    save(fig, "fig1_attack_success")
-
-
 def _spread(values: list[float], gap: float, lo: float, hi: float) -> list[float]:
     """Nudge label positions apart so that none overlap, keeping their order."""
     order = sorted(range(len(values)), key=lambda i: values[i])
@@ -227,218 +106,414 @@ def _spread(values: list[float], gap: float, lo: float, hi: float) -> list[float
     return placed
 
 
-def fig2_run_variability(per_exec: dict, tests: list[dict]) -> None:
-    """RQ2. One small panel per backbone. A flat line means the two
-    executions agreed; a steep line means they did not. Lines that cross
-    mean the topology ordering itself changed between executions."""
-    sig = {(r["model"], r["topology"]): r["significant"] for r in tests}
 
-    fig, axes = plt.subplots(2, 2, figsize=(IEEE_COL, 3.6), sharey=True,
-                             sharex=True)
-    for ax, model in zip(axes.ravel(), MODELS):
-        starts = [per_exec[model][t][0]["rate"] for t in TOPOLOGIES]
-        label_y = _spread(starts, gap=11.0, lo=0.0, hi=100.0)
+# ── Analysis configuration ───────────────────────────────────────────────────
 
-        seen: set[tuple[float, float]] = set()
+AGENTS = ["SensorAgent", "MonitorAgent", "SchedulerAgent",
+          "ActuatorAgent", "SupervisorAgent"]
+AGENT_SHORT = ["Sens.", "Mon.", "Sched.", "Act.", "Sup."]
+W_PAPER = np.array([0.5, 1.0, 2.0, 3.0, 1.5])          # Table II
+
+SCHEMES = {                          # order: S, M, Sc, A, Su
+    "Table II (paper)":         [0.5, 1.0, 2.0, 3.0, 1.5],
+    "Uniform":                  [1, 1, 1, 1, 1],
+    "Actuator-dominant (w_A=5)": [0.5, 1.0, 2.0, 5.0, 1.5],
+    "Rank-based":               [1, 2, 4, 5, 3],
+    "Geometric":                [1, 2, 8, 16, 4],
+}
+N_RANDOM = 10_000
+RNG = np.random.default_rng(2026)
+
+# Conditions used as the RQ2 illustration (non-tree, same backbone).
+EXAMPLE = ("Gemini 2.5 Flash", "star", "mesh")
+
+
+# ── Loading ──────────────────────────────────────────────────────────────────
+
+def is_failed(r: dict) -> bool:
+    return (r.get("scheduler_decision") == "UNKNOWN"
+            and r.get("supervisor_verdict") == "UNKNOWN")
+
+
+def load(name: str) -> list[dict]:
+    with open(DATA / f"{name}.json") as fh:
+        return [r for r in json.load(fh)["results"] if r["under_attack"]]
+
+
+def summarise(runs: list[dict], excluded: int) -> dict:
+    n = len(runs)
+    s = sum(1 for r in runs if r["attack_succeeded"])
+    c = np.array([np.mean([a in (r.get("propagation_path") or []) for r in runs])
+                  if n else np.nan for a in AGENTS])
+    return {"successes": s, "n": n, "excluded": excluded,
+            "rate": 100 * s / n if n else np.nan,
+            "impact": statistics.mean(r["physical_impact"] for r in runs) if n else np.nan,
+            "roles": c}
+
+
+def cell(name: str, topology: str) -> tuple[dict, list[dict]]:
+    all_runs = [r for r in load(name) if r["topology"] == topology]
+    valid = [r for r in all_runs if not is_failed(r)]
+    return summarise(valid, len(all_runs) - len(valid)), valid
+
+
+# ── Tests ────────────────────────────────────────────────────────────────────
+
+def rq1(cells):
+    out = []
+    for m in MODELS:
+        tab = np.array([[cells[m][t]["successes"],
+                         cells[m][t]["n"] - cells[m][t]["successes"]] for t in TOPOLOGIES])
+        row = {"model": m, "test": "pearson_chi2"}
+        if (tab.sum(axis=0) == 0).any():
+            row.update(chi2=None, df=None, p=None,
+                       note="not computable: identical outcome in every topology")
+        else:
+            chi2, p, dof, exp = chi2_contingency(tab, correction=False)
+            row.update(chi2=round(float(chi2), 2), df=int(dof), p=float(p),
+                       min_expected=round(float(exp.min()), 1))
+        out.append(row)
+    return out
+
+
+def rq2(per_exec):
+    out, raw, idx = [], [], []
+    for m in MODELS:
+        for t in TOPOLOGIES:
+            a, b = per_exec[m][t]
+            row = {"model": m, "topology": t, "n_exec1": a["n"], "n_exec2": b["n"],
+                   "rate_exec1": None if not a["n"] else round(a["rate"], 1),
+                   "rate_exec2": None if not b["n"] else round(b["rate"], 1)}
+            if a["n"] and b["n"]:
+                _, p = fisher_exact([[a["successes"], a["n"] - a["successes"]],
+                                     [b["successes"], b["n"] - b["successes"]]])
+                row.update(delta_pp=round(abs(a["rate"] - b["rate"]), 1), p=float(p))
+                raw.append(float(p)); idx.append(len(out))
+            else:
+                row.update(delta_pp=None, p=None, p_holm=None, significant=False,
+                           note="not testable: no valid runs in one execution")
+            out.append(row)
+    for i, adj in zip(idx, holm(raw)):
+        out[i]["p_holm"] = adj
+        out[i]["significant"] = adj < 0.05
+    return out, len(raw)
+
+
+def rq3_defences(cells, dcells):
+    bs = sum(cells[DEFENSE_BASELINE][t]["successes"] for t in TOPOLOGIES)
+    bn = sum(cells[DEFENSE_BASELINE][t]["n"] for t in TOPOLOGIES)
+    out, raw = [], []
+    for lab in DEFENSES:
+        s = sum(dcells[lab][t]["successes"] for t in TOPOLOGIES)
+        n = sum(dcells[lab][t]["n"] for t in TOPOLOGIES)
+        tab = np.array([[bs, bn - bs], [s, n - s]])
+        chi2, pc, _, exp = chi2_contingency(tab, correction=False)
+        odds, pf = fisher_exact(tab)
+        sparse = exp.min() < 5
+        p = float(pf if sparse else pc); raw.append(p)
+        out.append({"defense": lab, "rate": round(100 * s / n, 1), "n": n,
+                    "baseline_rate": round(100 * bs / bn, 1), "baseline_n": bn,
+                    "test": "fisher_exact" if sparse else "pearson_chi2", "p": p,
+                    "odds_ratio_baseline_to_defense": round(float(odds), 3)})
+    for r, adj in zip(out, holm(raw)):
+        r["p_holm"] = adj; r["significant"] = adj < 0.05
+    return out
+
+
+def random_ordered_weights():
+    """Random weights preserving Table II ordering S < M < Su < Sc < A."""
+    v = np.sort(RNG.uniform(0, 1, 5))
+    return np.array([v[0], v[1], v[3], v[4], v[2]])
+
+
+def sensitivity(cells):
+    keys = [(m, t) for m in MODELS for t in TOPOLOGIES]
+    R = np.array([cells[m][t]["roles"] for m, t in keys])
+    asr = np.array([cells[m][t]["rate"] for m, t in keys])
+    p_paper = R @ W_PAPER
+    m_, a, b = EXAMPLE
+    ca, cb = cells[m_][a]["roles"], cells[m_][b]["roles"]
+
+    def evaluate(w):
+        P = R @ w
+        return (float(spearmanr(asr, P).correlation),
+                float(spearmanr(p_paper, P).correlation),
+                float((cb @ w) / (ca @ w)))
+
+    schemes = {}
+    for name, w in SCHEMES.items():
+        r1, r2, ratio = evaluate(np.array(w, float))
+        schemes[name] = {"weights_S_M_Sc_A_Su": w, "rho_asr_P": round(r1, 3),
+                         "rho_with_tableII_P": round(r2, 3),
+                         "example_ratio": round(ratio, 2)}
+    draws = np.array([evaluate(random_ordered_weights()) for _ in range(N_RANDOM)])
+    q = lambda x: [round(float(v), 3) for v in np.percentile(x, [2.5, 50, 97.5])]
+    return {"note": "failed runs excluded; P = sum_i w_i c_i",
+            "example": f"{m_}: {b} vs {a}",
+            "schemes": schemes,
+            "random_order_preserving": {
+                "n_draws": N_RANDOM,
+                "rho_asr_P_2.5_50_97.5": q(draws[:, 0]),
+                "rho_with_tableII_P_2.5_50_97.5": q(draws[:, 1]),
+                "example_ratio_2.5_50_97.5": q(draws[:, 2]),
+                "example_direction_holds_pct": round(100 * float(np.mean(draws[:, 2] > 1)), 1)}}
+
+
+# ── Figures ──────────────────────────────────────────────────────────────────
+
+def fig1(cells):
+    fig, ax = plt.subplots(figsize=(IEEE_WIDE, 2.6))
+    width, x = 0.2, np.arange(len(TOPOLOGIES))
+    for i, m in enumerate(MODELS):
+        r, lo, hi = [], [], []
+        for t in TOPOLOGIES:
+            c = cells[m][t]; a, b = wilson(c["successes"], c["n"])
+            r.append(c["rate"]); lo.append(c["rate"] - a); hi.append(b - c["rate"])
+        pos = x + (i - 1.5) * width
+        ax.bar(pos, r, width, label=m, color=COLOURS[i], edgecolor="white", linewidth=0.4)
+        ax.errorbar(pos, r, yerr=[lo, hi], fmt="none", ecolor="#333333",
+                    elinewidth=0.7, capsize=1.6)
         for j, t in enumerate(TOPOLOGIES):
-            a_, b_ = per_exec[model][t]
-            significant = sig[(model, t)]
-            key = (a_["rate"], b_["rate"])
-            style = (0, (3, 2)) if key in seen else "solid"
+            if cells[m][t]["n"] < 50:
+                ax.text(pos[j], 2, f"n={cells[m][t]['n']}", rotation=90, ha="center",
+                        va="bottom", fontsize=4.8, color="white")
+    ax.set_xticks(x); ax.set_xticklabels([t.capitalize() for t in TOPOLOGIES])
+    ax.set_ylabel("Attack success rate (%)"); ax.set_ylim(0, 108)
+    ax.legend(ncol=4, frameon=False, loc="upper center", bbox_to_anchor=(0.5, 1.22))
+    ax.grid(axis="y", linewidth=0.3, alpha=0.4); ax.set_axisbelow(True)
+    fig.tight_layout(); save(fig, "fig1_attack_success")
+
+
+def fig2(per_exec, tests):
+    sig = {(r["model"], r["topology"]): r["significant"] for r in tests}
+    fig, axes = plt.subplots(1, 4, figsize=(IEEE_WIDE, 2.5), sharey=True)
+    for ax, m in zip(axes, MODELS):
+        starts = [per_exec[m][t][0]["rate"] for t in TOPOLOGIES]
+        label_y = _spread(starts, gap=7.0, lo=0.0, hi=100.0)
+        seen = set()
+        if max(starts) - min(starts) < 0.5:
+            # All topologies share one value: one label, not a misleading stack.
+            ax.plot([0, 1], [starts[0], starts[0]], color="#555555", linewidth=1.2,
+                    marker="o", markersize=3.2)
+            ax.text(-0.10, starts[0], "all five", ha="right", va="center",
+                    fontsize=6, color="#333333")
+            ax.text(0.5, 55, f"{starts[0]:.0f}% in every topology", ha="center",
+                    va="center", fontsize=5.6, color="#555555")
+            ax.set_title(m, fontsize=7.5, pad=4)
+            ax.set_xlim(-0.62, 1.12); ax.set_xticks([0, 1])
+            ax.set_xticklabels(["Exec 1", "Exec 2"], fontsize=7); ax.set_ylim(-5, 105)
+            ax.grid(axis="y", linewidth=0.3, alpha=0.4); ax.set_axisbelow(True)
+            continue
+        for j, t in enumerate(TOPOLOGIES):
+            a, b = per_exec[m][t]
+            s = sig[(m, t)]
+            ax.text(-0.10, label_y[j], t, ha="right", va="center", fontsize=6,
+                    color=COLOURS[j], fontweight="bold" if s else "normal")
+            key = (a["rate"], b["rate"])
+            ax.plot([0, 1], [a["rate"], b["rate"]], color=COLOURS[j],
+                    linestyle=(0, (4, 2)) if key in seen else "solid",
+                    linewidth=2.0 if s else 1.0, alpha=1.0 if s else 0.55,
+                    marker="o", markersize=3.2, zorder=2)
             seen.add(key)
-            ax.plot([0, 1], [a_["rate"], b_["rate"]],
-                    color=COLOURS[j], linestyle=style,
-                    linewidth=1.8 if significant else 0.9,
-                    alpha=1.0 if significant else 0.55,
-                    marker="o", markersize=2.6, zorder=2)
-            ax.text(-0.12, label_y[j], t, ha="right", va="center", fontsize=5.2,
-                    color=COLOURS[j],
-                    fontweight="bold" if significant else "normal")
-
-        ax.set_title(model, fontsize=6.5, pad=3)
-        ax.set_xlim(-0.78, 1.10)
-        ax.set_xticks([0, 1])
-        ax.set_xticklabels(["Exec 1", "Exec 2"], fontsize=6)
-        ax.set_ylim(-6, 106)
-        ax.set_yticks([0, 25, 50, 75, 100])
-        ax.tick_params(labelsize=6)
-        ax.grid(axis="y", linewidth=0.3, alpha=0.4)
-        ax.set_axisbelow(True)
-
-    for ax in axes[:, 0]:
-        ax.set_ylabel("Attack success (%)", fontsize=6.5)
-    fig.tight_layout(pad=0.4, h_pad=1.0, w_pad=0.6)
-    save(fig, "fig2_run_variability")
+        ax.set_title(m, fontsize=7.5, pad=4)
+        ax.set_xlim(-0.62, 1.12); ax.set_xticks([0, 1])
+        ax.set_xticklabels(["Exec 1", "Exec 2"], fontsize=7); ax.set_ylim(-5, 105)
+        ax.grid(axis="y", linewidth=0.3, alpha=0.4); ax.set_axisbelow(True)
+    axes[0].set_ylabel("Attack success rate (%)")
+    fig.text(0.5, -0.06, "Failed runs excluded. Bold lines: executions differ "
+             "significantly (Fisher, Holm-adjusted, $p<0.05$).",
+             ha="center", fontsize=6.5, color="#444444")
+    fig.tight_layout(); save(fig, "fig2_run_variability")
 
 
-def fig3_impact_vs_success(cells: dict) -> None:
-    """RQ2. All twenty conditions, sorted by attack success. If the two
-    measures were equivalent the right-hand bars would also decrease
-    monotonically. They do not, and each place where they rise is a
-    condition whose severity does not follow its frequency."""
-    rows = sorted(
-        ((model, t, cells[model][t]["rate"], cells[model][t]["impact"])
-         for model in MODELS for t in TOPOLOGIES),
-        key=lambda r: -r[2])
-    colour_of = dict(zip(MODELS, COLOURS))
-
+def fig3(cells):
+    """Paired horizontal bars (paper Fig. 4 style), sorted by attack success.
+    Tree rows are hatched: ActuatorAgent does not receive the scheduling
+    decision in the implemented tree topology."""
+    short = {"GPT-5.5": "GPT-5.5", "Claude Sonnet 4.5": "Claude 4.5",
+             "Gemini 2.5 Flash": "Gemini 2.5", "Gemini 3.5 Flash": "Gemini 3.5"}
+    rows = [(m, t) for m in MODELS for t in TOPOLOGIES]
+    rows.sort(key=lambda k: (-cells[k[0]][k[1]]["rate"], -cells[k[0]][k[1]]["impact"]))
+    colour = {m: COLOURS[i] for i, m in enumerate(MODELS)}
     y = np.arange(len(rows))[::-1]
-    rates = [r[2] for r in rows]
-    impacts = [r[3] for r in rows]
-    bar_colours = [colour_of[r[0]] for r in rows]
-    labels = [f"{r[0].replace(' Sonnet', '').replace(' Flash', '')}  {r[1]}"
-              for r in rows]
-
-    fig, (left, right) = plt.subplots(
-        1, 2, figsize=(IEEE_COL, 3.9), sharey=True,
-        gridspec_kw={"wspace": 0.10})
-
-    left.barh(y, rates, height=0.62, color=bar_colours, zorder=2)
-    left.set_xlim(0, 100)
-    left.invert_xaxis()                    # bars grow away from the centre
-    left.set_xticks([0, 50, 100])
-    left.set_xlabel("Attack success (%)", fontsize=7.5)
-    left.set_yticks(y)
-    left.set_yticklabels(labels, fontsize=6.2)
-    left.tick_params(axis="y", length=0, pad=3)
-
-    right.barh(y, impacts, height=0.62, color=bar_colours, zorder=2)
-    right.set_xlim(0, max(impacts) * 1.06)
-    right.set_xticks([0, 2, 4, 6])
-    right.set_xlabel("Operational impact $P$", fontsize=7.5)
-    right.tick_params(axis="y", length=0)
-
-    for ax in (left, right):
-        ax.grid(axis="x", linewidth=0.3, alpha=0.5)
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(IEEE_COL, 3.3), sharey=True,
+                                 gridspec_kw={"wspace": 0.05})
+    for yi, (m, t) in zip(y, rows):
+        c = cells[m][t]; hatch = "////" if t == "tree" else None
+        kw = dict(color=colour[m], height=0.62, hatch=hatch,
+                  edgecolor="white", linewidth=0.3)
+        a1.barh(yi, c["rate"], **kw); a2.barh(yi, c["impact"], **kw)
+    a1.set_yticks(y)
+    a1.set_yticklabels([f"{short[m]} {t}" + ("$^\\dagger$" if t == "tree" else "")
+                        for m, t in rows], fontsize=5.8)
+    a1.invert_xaxis(); a1.set_xlim(100, 0)
+    a1.set_xlabel("Attack success (%)", fontsize=7)
+    a2.set_xlabel("Operational impact $P$", fontsize=7)
+    for ax in (a1, a2):
+        ax.tick_params(axis="x", labelsize=6); ax.grid(axis="x", linewidth=0.3, alpha=0.4)
         ax.set_axisbelow(True)
-        ax.spines["left"].set_visible(False)
-        ax.tick_params(labelsize=7)
-
+    a2.tick_params(axis="y", length=0)
+    rates = [cells[m][t]["rate"] for m, t in rows]
+    imp = [cells[m][t]["impact"] for m, t in rows]
+    a2.text(0.97, 0.02, rf"Spearman $\rho$ = {spearmanr(rates, imp).correlation:.2f}",
+            transform=a2.transAxes, ha="right", fontsize=5.8, color="#555555")
     save(fig, "fig3_impact_vs_success")
 
 
-def fig4_defenses(cells: dict, defense_cells: dict) -> None:
-    """RQ4. Baseline against each defense, per topology."""
+def fig4(cells, dcells):
     fig, ax = plt.subplots(figsize=(IEEE_WIDE, 2.6))
     series = [("No defence", {t: cells[DEFENSE_BASELINE][t] for t in TOPOLOGIES})]
-    series += [(label, defense_cells[label]) for label in DEFENSES]
+    series += [(lab, dcells[lab]) for lab in DEFENSES]
+    width, x = 0.16, np.arange(len(TOPOLOGIES))
+    for i, (lab, d) in enumerate(series):
+        ax.bar(x + (i - 2) * width, [d[t]["rate"] for t in TOPOLOGIES], width,
+               label=lab, color=COLOURS[i], edgecolor="white", linewidth=0.4)
+    ax.set_xticks(x); ax.set_xticklabels([t.capitalize() for t in TOPOLOGIES])
+    ax.set_ylabel("Attack success rate (%)"); ax.set_ylim(0, 108)
+    ax.legend(ncol=5, frameon=False, loc="upper center", bbox_to_anchor=(0.5, 1.22))
+    ax.grid(axis="y", linewidth=0.3, alpha=0.4); ax.set_axisbelow(True)
+    fig.tight_layout(); save(fig, "fig4_defenses")
 
-    width = 0.16
-    x = np.arange(len(TOPOLOGIES))
-    for i, (label, data) in enumerate(series):
-        rates = [data[t]["rate"] for t in TOPOLOGIES]
-        ax.bar(x + (i - 2) * width, rates, width, label=label,
-               color=COLOURS[i], edgecolor="white", linewidth=0.4)
 
-    ax.set_xticks(x)
-    ax.set_xticklabels([t.capitalize() for t in TOPOLOGIES])
-    ax.set_ylabel("Attack success rate (%)")
-    ax.set_ylim(0, 108)
-    ax.legend(ncol=5, frameon=False, loc="upper center",
-              bbox_to_anchor=(0.5, 1.22))
-    ax.grid(axis="y", linewidth=0.3, alpha=0.4)
-    ax.set_axisbelow(True)
-    fig.tight_layout()
-    save(fig, "fig4_defenses")
+def fig5(cells):
+    """Weight-free view: fraction of attacked runs in which each role was
+    recorded as contaminated. P is a weighted sum of these columns."""
+    short = {"GPT-5.5": "GPT-5.5", "Claude Sonnet 4.5": "Claude 4.5",
+             "Gemini 2.5 Flash": "Gemini 2.5", "Gemini 3.5 Flash": "Gemini 3.5"}
+    keys = [(m, t) for m in MODELS for t in TOPOLOGIES]
+    M = np.array([cells[m][t]["roles"] for m, t in keys]) * 100
+    fig, ax = plt.subplots(figsize=(IEEE_COL, 3.6))
+    im = ax.imshow(M, cmap="Reds", vmin=0, vmax=100, aspect="auto")
+    for i in range(M.shape[0]):
+        for j in range(M.shape[1]):
+            ax.text(j, i, f"{M[i, j]:.0f}", ha="center", va="center", fontsize=5.2,
+                    color="white" if M[i, j] > 60 else "#222222")
+    ax.set_xticks(range(5))
+    ax.set_xticklabels([f"{a}\n($w$={w:g})" for a, w in zip(AGENT_SHORT, W_PAPER)],
+                       fontsize=5.8)
+    ax.set_yticks(range(len(keys)))
+    ax.set_yticklabels([f"{short[m]} {t}" + ("$^\\dagger$" if t == "tree" else "")
+                        for m, t in keys], fontsize=5.8)
+    for k in range(5, len(keys), 5):
+        ax.axhline(k - 0.5, color="white", linewidth=1.2)
+    ax.tick_params(length=0); ax.xaxis.tick_top()
+    for s in ax.spines.values():
+        s.set_visible(False)
+    cb = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
+    cb.ax.tick_params(labelsize=5.5); cb.set_label("Contaminated runs (%)", fontsize=6)
+    fig.tight_layout(); save(fig, "fig5_role_contamination")
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
-def main() -> None:
-    # Per execution, and pooled over the two executions.
-    per_exec, cells = {}, {}
-    for model, (f1, f2) in MODELS.items():
-        per_exec[model] = {t: (condition(f1, t), condition(f2, t))
-                           for t in TOPOLOGIES}
-        cells[model] = {}
+def main():
+    per_exec, cells, excluded_log = {}, {}, []
+    for m, (f1, f2) in MODELS.items():
+        per_exec[m], cells[m] = {}, {}
         for t in TOPOLOGIES:
-            a, b = per_exec[model][t]
-            s, n = a["successes"] + b["successes"], a["n"] + b["n"]
-            runs = attacked_runs(f1, t) + attacked_runs(f2, t)
-            cells[model][t] = {
-                "successes": s, "n": n, "rate": 100 * s / n,
-                "impact": statistics.mean(r["physical_impact"] for r in runs),
-            }
+            (a, ra), (b, rb) = cell(f1, t), cell(f2, t)
+            per_exec[m][t] = (a, b)
+            cells[m][t] = summarise(ra + rb, a["excluded"] + b["excluded"])
+            for e, x in ((1, a), (2, b)):
+                if x["excluded"]:
+                    excluded_log.append((m, t, e, x["excluded"]))
+    dcells = {lab: {t: cell(f, t)[0] for t in TOPOLOGIES} for lab, f in DEFENSES.items()}
 
-    defense_cells = {label: {t: condition(f, t) for t in TOPOLOGIES}
-                     for label, f in DEFENSES.items()}
+    t1 = rq1(cells)
+    t2, n_tests = rq2(per_exec)
+    t3 = rq3_defences(cells, dcells)
+    sens = sensitivity(cells)
+    keys_all = [(m, t) for m in MODELS for t in TOPOLOGIES]
+    rho = float(spearmanr([cells[m][t]["rate"] for m, t in keys_all],
+                          [cells[m][t]["impact"] for m, t in keys_all]).correlation)
+    (OUT / "stats.json").write_text(json.dumps(
+        {"exclusion_rule": "scheduler_decision == supervisor_verdict == 'UNKNOWN'",
+         "excluded_runs": [{"model": m, "topology": t, "exec": e, "n": n}
+                           for m, t, e, n in excluded_log],
+         "rq1_topology_effect": t1, "rq1_execution_heterogeneity": t2,
+         "rq2_spearman_asr_P": rho, "rq3_defense_vs_baseline": t3}, indent=2))
+    (OUT / "sensitivity.json").write_text(json.dumps(sens, indent=2))
 
-    tests = {"rq1_topology_effect": rq1(cells),
-             "rq2_execution_heterogeneity": rq2(per_exec),
-             "rq4_defense_vs_baseline": rq4(cells, defense_cells)}
-    (OUT / "stats.json").write_text(json.dumps(tests, indent=2))
-
-    # One row per condition, holding every number the paper reports.
     rows = []
-    for model in MODELS:
+    for m in MODELS:
         for t in TOPOLOGIES:
-            a, b = per_exec[model][t]
-            c = cells[model][t]
-            lo, hi = wilson(c["successes"], c["n"])
-            rows.append({
-                "block": "baseline", "model": model, "topology": t,
-                "succ_exec1": a["successes"], "succ_exec2": b["successes"],
-                "n_per_exec": a["n"],
-                "rate_exec1": round(a["rate"], 1), "rate_exec2": round(b["rate"], 1),
-                "delta_pp": round(abs(a["rate"] - b["rate"]), 1),
-                "rate_pooled": round(c["rate"], 1),
-                "wilson_lo": round(lo, 1), "wilson_hi": round(hi, 1),
-                "impact_P": round(c["impact"], 2),
-            })
-    for label in DEFENSES:
+            a, b = per_exec[m][t]; c = cells[m][t]; lo, hi = wilson(c["successes"], c["n"])
+            rows.append({"block": "baseline", "model": m, "topology": t,
+                         "succ_exec1": a["successes"], "n_exec1": a["n"],
+                         "succ_exec2": b["successes"], "n_exec2": b["n"],
+                         "excluded_failed": c["excluded"],
+                         "rate_exec1": round(a["rate"], 1) if a["n"] else "",
+                         "rate_exec2": round(b["rate"], 1) if b["n"] else "",
+                         "delta_pp": round(abs(a["rate"] - b["rate"]), 1) if a["n"] and b["n"] else "",
+                         "rate_pooled": round(c["rate"], 1), "n_pooled": c["n"],
+                         "wilson_lo": round(lo, 1), "wilson_hi": round(hi, 1),
+                         "impact_P": round(c["impact"], 2)})
+    for lab in DEFENSES:
         for t in TOPOLOGIES:
-            c = defense_cells[label][t]
-            lo, hi = wilson(c["successes"], c["n"])
-            rows.append({
-                "block": "defense", "model": label, "topology": t,
-                "succ_exec1": c["successes"], "succ_exec2": "",
-                "n_per_exec": c["n"],
-                "rate_exec1": round(c["rate"], 1), "rate_exec2": "",
-                "delta_pp": "", "rate_pooled": round(c["rate"], 1),
-                "wilson_lo": round(lo, 1), "wilson_hi": round(hi, 1),
-                "impact_P": round(c["impact"], 2),
-            })
+            c = dcells[lab][t]; lo, hi = wilson(c["successes"], c["n"])
+            rows.append({"block": "defense", "model": lab, "topology": t,
+                         "succ_exec1": c["successes"], "n_exec1": c["n"],
+                         "succ_exec2": "", "n_exec2": "", "excluded_failed": c["excluded"],
+                         "rate_exec1": round(c["rate"], 1), "rate_exec2": "", "delta_pp": "",
+                         "rate_pooled": round(c["rate"], 1), "n_pooled": c["n"],
+                         "wilson_lo": round(lo, 1), "wilson_hi": round(hi, 1),
+                         "impact_P": round(c["impact"], 2)})
     with open(OUT / "table.csv", "w", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
+        w = csv.DictWriter(fh, fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
+    with open(OUT / "role_contamination.csv", "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["model", "topology", "n"] + [f"c_{a}" for a in AGENTS] + ["impact_P"])
+        for m in MODELS:
+            for t in TOPOLOGIES:
+                c = cells[m][t]
+                w.writerow([m, t, c["n"]] + [round(float(v), 3) for v in c["roles"]]
+                           + [round(c["impact"], 3)])
 
-    fig1_attack_success(cells)
-    fig2_run_variability(per_exec, tests["rq2_execution_heterogeneity"])
-    fig3_impact_vs_success(cells)
-    fig4_defenses(cells, defense_cells)
+    fig1(cells); fig2(per_exec, t2); fig3(cells); fig4(cells, dcells); fig5(cells)
 
-    # ── Console summary: the numbers to paste into the LaTeX ────────────────
-    print("\nRQ1  topology effect (pooled, n=50 per condition)")
-    for r in tests["rq1_topology_effect"]:
-        print(f"     {r['model']:18s} chi2({r['df']}) = {r['chi2']:6.2f}   "
-              f"p = {r['p']:.3g}   min expected = {r['min_expected']}")
-
-    print("\nRQ2  execution-to-execution heterogeneity (Holm over 20 tests)")
-    for r in tests["rq2_execution_heterogeneity"]:
-        if r["significant"]:
-            print(f"     {r['model']:18s} {r['topology']:7s} "
-                  f"{r['rate_exec1']:5.0f}% vs {r['rate_exec2']:5.0f}%  "
-                  f"|d| = {r['delta_pp']:5.0f} pp   p_holm = {r['p_holm']:.3g}")
-    n_sig = sum(r["significant"] for r in tests["rq2_execution_heterogeneity"])
-    print(f"     -> {n_sig} of 20 conditions differ significantly")
-
-    print("\nRQ3  attack success and physical impact (descriptive)")
-    for model in MODELS:
-        line = "  ".join(f"{t[:4]} {cells[model][t]['rate']:3.0f}%/"
-                         f"P={cells[model][t]['impact']:.2f}" for t in TOPOLOGIES)
-        print(f"     {model:18s} {line}")
-
-    print(f"\nRQ4  defenses vs no-defense baseline "
-          f"({tests['rq4_defense_vs_baseline'][0]['baseline_rate']}%, "
-          f"Holm over 4 tests)")
-    for r in tests["rq4_defense_vs_baseline"]:
-        verdict = "significant" if r["significant"] else "not significant"
-        print(f"     {r['defense']:22s} {r['rate']:5.1f}%   "
-              f"p_holm = {r['p_holm']:.3g}   OR = {r['odds_ratio_baseline_to_defense']:.3f}   {verdict}")
-
-    print(f"\nWritten to {OUT}/ : table.csv, stats.json, "
-          f"4 figures as {' and '.join(FORMATS)}\n")
+    # ── Summary of numbers to paste ──────────────────────────────────────────
+    S = ["# Numbers for the revised paper (failed runs excluded)\n"]
+    S.append(f"Excluded failed runs: {sum(n for *_, n in excluded_log)} "
+             f"(baseline). Per condition:")
+    for m, t, e, n in excluded_log:
+        S.append(f"- {m} {t} exec{e}: {n}")
+    S.append("\n## RQ1 attack success (pooled, valid runs)")
+    for m in MODELS:
+        S.append(f"- {m}: " + ", ".join(
+            f"{t} {cells[m][t]['rate']:.0f}% (n={cells[m][t]['n']})" for t in TOPOLOGIES))
+    S.append("\n## RQ1 chi-square within backbone")
+    for r in t1:
+        S.append(f"- {r['model']}: " + (r["note"] if r["chi2"] is None else
+                 f"chi2({r['df']}) = {r['chi2']}, p = {r['p']:.3g}"))
+    S.append(f"\n## Execution differences (Fisher, Holm over {n_tests} testable conditions)")
+    for r in sorted(t2, key=lambda r: -(r["delta_pp"] or -1)):
+        if r["delta_pp"] is None:
+            S.append(f"- {r['model']} {r['topology']}: {r['note']}")
+        elif r["delta_pp"] >= 20 or r["significant"]:
+            S.append(f"- {r['model']} {r['topology']}: {r['rate_exec1']}% (n={r['n_exec1']}) vs "
+                     f"{r['rate_exec2']}% (n={r['n_exec2']}), |d| = {r['delta_pp']} pp, "
+                     f"p_holm = {r['p_holm']:.3g}{'  SIGNIFICANT' if r['significant'] else ''}")
+    S.append(f"\n## RQ2\n- Spearman rho(ASR, P) = {rho:.2f}")
+    m_, a, b = EXAMPLE
+    for t in (a, b):
+        c = cells[m_][t]
+        S.append(f"- {m_} {t}: ASR {c['rate']:.0f}%, P = {c['impact']:.2f}, "
+                 f"actuator reached {100 * c['roles'][3]:.0f}%")
+    rr = sens["random_order_preserving"]
+    S.append(f"- Sensitivity (named schemes + 95% of random draws): rho(ASR,P) "
+             f"{min(rr['rho_asr_P_2.5_50_97.5'][0], *[v['rho_asr_P'] for v in sens['schemes'].values()]):.2f}-"
+             f"{max(rr['rho_asr_P_2.5_50_97.5'][2], *[v['rho_asr_P'] for v in sens['schemes'].values()]):.2f}; "
+             f"rank agreement with Table II >= {min(rr['rho_with_tableII_P_2.5_50_97.5'][0], *[v['rho_with_tableII_P'] for v in sens['schemes'].values()]):.2f}; "
+             f"example ratio {rr['example_ratio_2.5_50_97.5'][0]:.1f}-"
+             f"{rr['example_ratio_2.5_50_97.5'][2]:.1f}x, direction holds "
+             f"{rr['example_direction_holds_pct']}%")
+    S.append("\n## RQ3 defences vs pooled baseline")
+    for r in t3:
+        S.append(f"- {r['defense']}: {r['rate']}% (n={r['n']}) vs baseline "
+                 f"{r['baseline_rate']}% (n={r['baseline_n']}), p_holm = {r['p_holm']:.3g}"
+                 f"{'  SIGNIFICANT' if r['significant'] else ''}")
+    (OUT / "SUMMARY.md").write_text("\n".join(S) + "\n")
+    print("\n".join(S))
 
 
 if __name__ == "__main__":

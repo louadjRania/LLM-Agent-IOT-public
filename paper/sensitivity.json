@@ -1,0 +1,90 @@
+{
+  "note": "failed runs excluded; P = sum_i w_i c_i",
+  "example": "Gemini 2.5 Flash: mesh vs star",
+  "schemes": {
+    "Table II (paper)": {
+      "weights_S_M_Sc_A_Su": [
+        0.5,
+        1.0,
+        2.0,
+        3.0,
+        1.5
+      ],
+      "rho_asr_P": 0.885,
+      "rho_with_tableII_P": 1.0,
+      "example_ratio": 1.74
+    },
+    "Uniform": {
+      "weights_S_M_Sc_A_Su": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "rho_asr_P": 0.895,
+      "rho_with_tableII_P": 0.985,
+      "example_ratio": 1.4
+    },
+    "Actuator-dominant (w_A=5)": {
+      "weights_S_M_Sc_A_Su": [
+        0.5,
+        1.0,
+        2.0,
+        5.0,
+        1.5
+      ],
+      "rho_asr_P": 0.872,
+      "rho_with_tableII_P": 0.997,
+      "example_ratio": 2.19
+    },
+    "Rank-based": {
+      "weights_S_M_Sc_A_Su": [
+        1,
+        2,
+        4,
+        5,
+        3
+      ],
+      "rho_asr_P": 0.899,
+      "rho_with_tableII_P": 0.997,
+      "example_ratio": 1.62
+    },
+    "Geometric": {
+      "weights_S_M_Sc_A_Su": [
+        1,
+        2,
+        8,
+        16,
+        4
+      ],
+      "rho_asr_P": 0.875,
+      "rho_with_tableII_P": 0.995,
+      "example_ratio": 2.11
+    }
+  },
+  "random_order_preserving": {
+    "n_draws": 10000,
+    "rho_asr_P_2.5_50_97.5": [
+      0.868,
+      0.897,
+      0.906
+    ],
+    "rho_with_tableII_P_2.5_50_97.5": [
+      0.988,
+      0.995,
+      1.0
+    ],
+    "example_ratio_2.5_50_97.5": [
+      1.43,
+      1.603,
+      2.219
+    ],
+    "example_direction_holds_pct": 100.0
+  },
+  "range_all": {
+    "rho_asr_P_min": 0.731,
+    "rho_asr_P_max": 0.909,
+    "rho_with_tableII_min": 0.946
+  }
+}

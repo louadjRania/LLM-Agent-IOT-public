@@ -1,28 +1,3 @@
-"""
-physical_impact.py
-=================
-
-Recomputes the `physical_impact` field of every attack run from
-`propagation_path` instead of `contaminated_agents`.
-
-Rationale
----------
-`contaminated_agents` records one entry per relayed message, so an agent
-that forwards several messages is counted several times. In the star
-topology the SupervisorAgent is the hub and therefore appears up to four
-times in a single run, inflating the role-weighted impact score P.
-`propagation_path`, produced by the same simulator, lists each agent once
-and is the correct basis for P.
-
-Verified on the released dataset: for all 1500 attack runs,
-set(propagation_path) == set(contaminated_agents), and propagation_path
-contains no duplicates.
-
-Usage
------
-    python physical_impact.py --in data/results --out data/results_fixed
-"""
-
 import argparse
 import json
 import shutil

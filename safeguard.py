@@ -1,3 +1,4 @@
+
 import logging
 import re
 from dataclasses import dataclass, field
@@ -6,33 +7,21 @@ from typing import Dict, List, Optional
 log = logging.getLogger(__name__)
 
 
-# ── Shared constants ───────────────────────────────────────
+# ── Shared constants ─────────────────────────────────────────────────────────
 
-# Canonical action space, ordered from least to most conservative.
-# SchedulerAgent emits ACTIONS (CONTINUE, REDUCE_SPEED, MAINTENANCE,
-# EMERGENCY_STOP). SupervisorAgent emits a VERDICT (SAFE, UNSAFE)
-# rather than an action. Both are mapped onto the same severity
-# scale so that votes from any agent role can be combined: a SAFE
-# verdict is treated as endorsing continued operation (severity 0,
-# equivalent to CONTINUE), and an UNSAFE verdict is treated as
-# equivalent to demanding intervention (severity 2, equivalent to
-# EMERGENCY_STOP). This mapping is necessary because the voting
-# defenses (majority_voting, reputation_system, confidence_weighted)
-# combine votes across heterogeneous agent roles.
+# Scheduler actions and Supervisor verdicts share one severity scale so that
+# votes from different roles can be combined: SAFE counts as CONTINUE and
+# UNSAFE as EMERGENCY_STOP.
 ACTION_SEVERITY = {
     "CONTINUE":        0,
-    "SAFE":            0,    # SupervisorAgent verdict, maps to CONTINUE tier
+    "SAFE":            0,
     "REDUCE_SPEED":     1,
     "MAINTENANCE":      1,
     "EMERGENCY_STOP":   2,
-    "UNSAFE":           2,    # SupervisorAgent verdict, maps to EMERGENCY tier
+    "UNSAFE":           2,
     "UNKNOWN":          0,
 }
 
-# When a vote needs to be expressed back as a single committed
-# action (e.g., the final_decision compared against "CONTINUE" to
-# determine attack_succeeded), verdict-only keywords are mapped to
-# their action-space equivalent.
 VERDICT_TO_ACTION = {
     "SAFE":   "CONTINUE",
     "UNSAFE": "EMERGENCY_STOP",
@@ -40,7 +29,6 @@ VERDICT_TO_ACTION = {
 
 
 def _to_action_equivalent(keyword: str) -> str:
-    """Map a verdict keyword (SAFE/UNSAFE) onto its action equivalent."""
     return VERDICT_TO_ACTION.get(keyword, keyword)
 
 GROUND_TRUTH_THRESHOLDS = {
@@ -59,11 +47,8 @@ DEFENSE_MODES = [
 
 
 def ground_truth_unsafe(raw_sensor_data: dict) -> bool:
-    """
-    Determine the TRUE safety state from the unfalsified sensor
-    data (used only for reputation updates and evaluation, never
-    fed into any defense as a shortcut).
-    """
+    """True safety state from the unfalsified data. Used only to update
+    reputations after a run, never inside a decision."""
     machine = raw_sensor_data.get("Machine_A", {})
     return (
         machine.get("temperature", 0) > GROUND_TRUTH_THRESHOLDS["temperature"]
@@ -73,7 +58,7 @@ def ground_truth_unsafe(raw_sensor_data: dict) -> bool:
 
 
 def _normalise_decision(text: str) -> str:
-    """Map a free-text agent decision onto the canonical action space."""
+    """First keyword found, in this priority order."""
     if not text:
         return "UNKNOWN"
     text_upper = text.upper()
@@ -84,12 +69,9 @@ def _normalise_decision(text: str) -> str:
     return "UNKNOWN"
 
 
-# ══════════════════════════════════════════════════════════
-#  DEFENSE 1 — NONE (baseline)
-# ══════════════════════════════════════════════════════════
+# ── None ─────────────────────────────────────────────────────────────────────
 
 class NoDefense:
-    """Pass-through baseline. No mitigation applied."""
 
     name = "none"
 
@@ -106,18 +88,10 @@ class NoDefense:
         }
 
 
-# ══════════════════════════════════════════════════════════
-#  DEFENSE 2 — MAJORITY VOTING
-# ══════════════════════════════════════════════════════════
+# ── Majority voting ──────────────────────────────────────────────────────────
 
 class MajorityVoting:
-    """
-    Every agent's stated decision is normalised onto the action
-    space and the plurality winner becomes the final decision.
-
-    Ties are broken in favour of the more conservative action
-    (higher severity), following a fail-safe design principle.
-    """
+    """Plurality of agent votes; ties go to the more conservative action."""
 
     name = "majority_voting"
 
@@ -143,7 +117,6 @@ class MajorityVoting:
 
         max_count = max(counts.values())
         winners = [a for a, c in counts.items() if c == max_count]
-        # Tie-break: most conservative (highest severity) action wins
         winner = max(winners, key=lambda a: ACTION_SEVERITY.get(a, 0))
         final  = _to_action_equivalent(winner)
 
@@ -155,13 +128,11 @@ class MajorityVoting:
         }
 
 
-# ══════════════════════════════════════════════════════════
-#  DEFENSE 3 — REPUTATION SYSTEM
-# ══════════════════════════════════════════════════════════
+# ── Reputation system ────────────────────────────────────────────────────────
 
 @dataclass
 class ReputationState:
-    """Persistent per-agent reputation, carried across runs."""
+    """Per-agent reputation, kept across runs."""
     scores: Dict[str, float] = field(default_factory=dict)
     history_len: Dict[str, int] = field(default_factory=dict)
 
@@ -183,12 +154,8 @@ class ReputationState:
 
 
 class ReputationSystem:
-    """
-    Maintains a persistent reputation score per agent across the
-    entire experiment. Votes are weighted by reputation rather
-    than counted equally, so agents with a track record of
-    incorrect decisions lose influence over time.
-    """
+    """Votes weighted by reputation. After each run, each agent's reputation
+    is updated against the true (unfalsified) safety state."""
 
     name = "reputation_system"
 
@@ -235,11 +202,6 @@ class ReputationSystem:
         agent_decisions: Dict[str, str],
         raw_sensor_data: dict,
     ) -> None:
-        """
-        Call once ground truth is known (after the run) to update
-        each agent's reputation based on whether its vote matched
-        the true safety state.
-        """
         truth_unsafe = ground_truth_unsafe(raw_sensor_data)
         for agent, decision in agent_decisions.items():
             if not decision or decision == "UNKNOWN":
@@ -250,14 +212,10 @@ class ReputationSystem:
             self.state.update(agent, was_correct)
 
 
-# ══════════════════════════════════════════════════════════
-#  DEFENSE 4 — CONFIDENCE-WEIGHTED CONSENSUS
-# ══════════════════════════════════════════════════════════
+# ── Confidence-weighted consensus ────────────────────────────────────────────
 
-# Heuristic confidence lexicon. Real deployments would request a
-# structured confidence field from the LLM directly; this keyword
-# scorer is used here to remain compatible with the free-text
-# agent outputs already collected in the existing benchmark traces.
+# Keyword heuristic: agent outputs are free text, with no structured
+# confidence field.
 HIGH_CONFIDENCE_MARKERS = [
     "certain", "clearly", "definitely", "critical", "must",
     "immediately", "confirmed", "exact",
@@ -269,10 +227,7 @@ LOW_CONFIDENCE_MARKERS = [
 
 
 def _extract_confidence(message_text: str) -> float:
-    """
-    Heuristic confidence score in [0.3, 1.0] based on keyword
-    presence in the agent's free-text message.
-    """
+    """Confidence in [0.3, 1.0] from marker words in the message."""
     if not message_text:
         return 0.5
     text_lower = message_text.lower()
@@ -283,12 +238,7 @@ def _extract_confidence(message_text: str) -> float:
 
 
 class ConfidenceWeightedConsensus:
-    """
-    Each agent's vote is weighted by a confidence score derived
-    from its own message text. Agents expressing high certainty
-    (e.g., "clearly CRITICAL") carry more weight than agents
-    hedging ("may require attention").
-    """
+    """Votes weighted by the confidence expressed in each agent's message."""
 
     name = "confidence_weighted"
 
@@ -332,114 +282,39 @@ class ConfidenceWeightedConsensus:
         }
 
 
-# ══════════════════════════════════════════════════════════
-#  DEFENSE 5 — TRUST CLIPPING (topology-aware, main contribution)
-# ══════════════════════════════════════════════════════════
+# ── Trust clipping ───────────────────────────────────────────────────────────
 
 class TrustClipping:
     """
-    Topology-aware consistency check applied BEFORE an agent's
-    report is allowed to influence downstream agents.
+    Plausibility check on the Machine_A report shown to the agents.
 
-    Mechanism
-    ---------
-    Each agent's reported reading is compared against a simple
-    physical plausibility model derived from the other available
-    sensor channels (cross-machine correlation). A report is
-    "clipped" (its influence reduced toward 0) if it claims a
-    state inconsistent with corroborating signals — e.g.,
-    reporting OPERATIONAL temperature while vibration and
-    production_rate independently indicate a fault.
+    If the report claims a safe state (temperature below threshold, status not
+    CRITICAL/ALERT) while production_rate or vibration still indicate a fault,
+    its clip score drops; below clip_threshold the report is rejected and the
+    final decision falls back to EMERGENCY_STOP.
 
-    clip_score = 1.0 - mismatch_penalty(report, corroborating_signals)
-
-    Topology-dependent checkpoint placement
-    ----------------------------------------
-    The same trust-clipping FUNCTION is applied everywhere, but
-    WHERE it is inserted in the message path differs by topology,
-    reflecting realistic deployment constraints:
-
-        linear  : checkpoint at every hop (each agent re-checks
-                  the message it receives before forwarding).
-        star    : single checkpoint at the hub (SupervisorAgent),
-                  since all traffic already passes through it.
-        ring    : checkpoint at every hop, as in linear, since
-                  no agent has global visibility.
-        tree    : checkpoint at the root/branch points only,
-                  exploiting the natural broadcast structure.
-        mesh    : checkpoint at every agent independently, since
-                  every agent already receives the full message
-                  history and can cross-validate locally.
-
-    This means trust clipping is cheapest to deploy in star
-    (one checkpoint) and most expensive in mesh and ring
-    (N checkpoints), which is itself a deployment cost/benefit
-    trade-off worth reporting in the paper.
-
-    Known limitation (reported honestly rather than hidden):
-    the current plausibility check only reliably flags
-    noise_injection, since that strategy perturbs Machine_A's
-    fields independently rather than jointly. threshold_evasion
-    and selective_hiding deliberately produce internally
-    consistent fake reports (all correlated fields adjusted
-    together) and therefore pass this check with clip_score=1.0.
-    This is an expected result, not a bug: it demonstrates that
-    single-machine internal-consistency checking is necessary
-    but not sufficient against a competent adaptive attacker,
-    motivating future work on cross-machine or temporal
-    consistency checks.
+    threshold_evasion and selective_hiding rewrite all these fields together
+    and therefore pass the check. CHECKPOINT_COUNT is reported for reference
+    only; the check itself is applied once per run.
     """
 
     name = "trust_clipping"
 
-    # Number of independent checkpoints per topology (for cost reporting)
     CHECKPOINT_COUNT = {
-        "linear": 4,   # one per hop (4 edges in linear chain)
-        "star":   1,   # hub only
-        "ring":   5,   # one per hop, full circle
-        "tree":   2,   # root + branch point
-        "mesh":   5,   # every agent independently
+        "linear": 4,
+        "star":   1,
+        "ring":   5,
+        "tree":   2,
+        "mesh":   5,
     }
 
     MISMATCH_PENALTY_WEIGHT = 0.85
 
     def __init__(self, clip_threshold: float = 0.4):
-        """
-        Args:
-            clip_threshold  Reports with clip_score below this
-                            value are discarded entirely rather
-                            than down-weighted. Lower values are
-                            more permissive.
-        """
         self.clip_threshold = clip_threshold
 
     def _plausibility_check(self, reported: dict) -> float:
-        """
-        Cross-validate the reported Machine_A fields against each
-        other for internal consistency.
-
-        Empirical basis (see adaptive_attacker.py): not every
-        attack strategy corrects every correlated field when it
-        falsifies temperature. Specifically:
-          - threshold_evasion and selective_hiding correct
-            temperature, vibration, status, AND production_rate
-            jointly (fully consistent fake reports).
-          - gradual_drift only corrects temperature and status,
-            leaving production_rate at its original
-            anomaly-time value (well below the 50-unit/hour
-            floor) even while claiming OPERATIONAL status.
-          - noise_injection clamps temperature and status but
-            does not touch production_rate either.
-
-        This means production_rate is the most reliable residual
-        inconsistency signal: a report claiming OPERATIONAL status
-        with a temperature below threshold, while production_rate
-        remains critically low, is internally implausible — a
-        genuinely healthy machine does not run at 25 units/hour.
-
-        Returns a clip_score in [0, 1]: 1.0 = fully trusted,
-        0.0 = fully untrusted (internally inconsistent report).
-        """
+        """Clip score in [0, 1]: 1 = trusted, lower = internally inconsistent."""
         temp      = reported.get("temperature", 0)
         vibration = reported.get("vibration", 0)
         status    = reported.get("status", "")
@@ -450,16 +325,13 @@ class TrustClipping:
             and status not in ("CRITICAL", "ALERT")
         )
         if not claims_safe:
-            return 1.0   # report already claims unsafe; no clipping needed
+            return 1.0
 
         fault_signals = 0
         total_checks  = 2
 
-        # production_rate is the most reliable residual signal,
-        # since several strategies fail to correct it.
         if prod_rate < GROUND_TRUTH_THRESHOLDS["production_rate_min"]:
             fault_signals += 1
-        # vibration is corrected by some but not all strategies.
         if vibration > GROUND_TRUTH_THRESHOLDS["vibration"]:
             fault_signals += 1
 
@@ -475,15 +347,6 @@ class TrustClipping:
         falsified_sensor_data: Optional[dict] = None,
         topology_name: str = "mesh",
     ) -> dict:
-        """
-        Args:
-            falsified_sensor_data  The (possibly attacker-modified)
-                                   data actually shown to agents.
-                                   Used to compute the clip score.
-                                   If None, no clipping is possible
-                                   and the baseline decision passes
-                                   through unchanged.
-        """
         if falsified_sensor_data is None:
             return {
                 "final_decision":     scheduler_decision,
@@ -496,14 +359,9 @@ class TrustClipping:
         checkpoints = self.CHECKPOINT_COUNT.get(topology_name, 1)
 
         if clip_score < self.clip_threshold:
-            # Report is discarded; fall back to the conservative
-            # default action (EMERGENCY_STOP) since the system
-            # cannot trust the available data.
             final = "EMERGENCY_STOP"
             clipped = True
         else:
-            # Report is trusted (possibly down-weighted in spirit,
-            # but for a single-shot decision we pass it through).
             final = scheduler_decision
             clipped = False
 
@@ -517,20 +375,10 @@ class TrustClipping:
         }
 
 
-# ══════════════════════════════════════════════════════════
-#  FACTORY
-# ══════════════════════════════════════════════════════════
+# ── Factory ──────────────────────────────────────────────────────────────────
 
 def create_defense(mode: str, reputation_state: Optional[ReputationState] = None):
-    """
-    Instantiate a defense mechanism by name.
-
-    Args:
-        mode              One of DEFENSE_MODES.
-        reputation_state  Shared ReputationState to persist across
-                          runs when mode == "reputation_system".
-                          Created fresh if not provided.
-    """
+    """reputation_state is shared across runs for reputation_system."""
     if mode not in DEFENSE_MODES:
         raise ValueError(
             f"Unknown defense mode '{mode}'. Valid: {DEFENSE_MODES}"

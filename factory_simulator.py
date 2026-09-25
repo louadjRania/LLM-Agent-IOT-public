@@ -1,29 +1,3 @@
-"""
-factory_simulator.py
-
-IoT Smart Factory Simulator for Hallucination Cascade Research.
-
-Simulates a 4-machine industrial environment by generating
-realistic sensor telemetry and publishing it to ThingsBoard
-via MQTT. Supports normal operation and anomaly injection
-for controlled experimental conditions.
-
-Machines simulated:
-    Machine_A       : production machine (temperature, vibration)
-    Conveyor_B      : conveyor belt (speed, load)
-    Quality_Sensor_C: quality control (defect rate)
-    Energy_Monitor_D: energy consumption (kW, efficiency)
-
-Output:
-    - MQTT telemetry to ThingsBoard (port 1883)
-    - Shared JSON file: data/latest_data.json
-      (read by experiment modules for agent input)
-
-Usage:
-    python factory_simulator.py
-    python factory_simulator.py --anomaly-rate 0.1
-"""
-
 import argparse
 import json
 import logging

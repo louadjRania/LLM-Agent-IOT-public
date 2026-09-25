@@ -92,10 +92,7 @@ FALLBACK_DATA = {
 
 @dataclass
 class ExperimentConfig:
-    """
-    All tunable experiment parameters in one place.
-    Passed through the call stack to avoid global state.
-    """
+   
     topologies:         List[str] = field(
         default_factory=lambda: [
             "linear", "star", "ring", "tree", "mesh"

@@ -10,7 +10,7 @@ audit trail.
 | File | Source timestamp | Model |
 |---|---|---|
 | gpt55_exec1.json | 20260714_195521 | GPT-5.5 |
-| gpt55_exec2.json | 20260716_214008 | GPT-5.5 |
+| gpt55_exec2.json | 20260925_120706 | GPT-5.5 (repeated execution, model snapshot gpt-5.5-2026-04-23) |
 | claude45_exec1.json | 20260715_155122 | Claude Sonnet 4.5 |
 | claude45_exec2.json | 20260715_181031 | Claude Sonnet 4.5 |
 | gemini25_exec1.json | 20260714_185900 | Gemini 2.5 Flash (see OPEN ASSUMPTION) |
@@ -36,7 +36,22 @@ This has NOT been confirmed against lab logs. If it proves to be a pilot run,
 Gemini 2.5 has only ONE execution and must be excluded from the run-to-run
 variability analysis.
 
+## Failed runs
+
+A run in which both SchedulerAgent and SupervisorAgent returned no
+recognisable keyword (both `UNKNOWN`) is a failed model call (API error or
+timeout). paper_analysis.py excludes such runs instead of scoring them as
+unsuccessful attacks.
+
 ## Excluded, and why
+
+- cascade_results_20260716_214008.json: original second GPT-5.5 execution.
+  All 25 attacked runs under tree and all 25 under mesh were failed model
+  calls, leaving no valid runs for those conditions. The execution was
+  therefore repeated in full on 2026-09-25 (20260925_120706), with the same
+  code, and the repeat replaces it. The decision to replace rather than add
+  was taken before the repeat was run. The original file remains in
+  all_runs.zip for transparency.
 
 - cascade_results_gemini25_run1.json: byte-identical checkpoint copy of 20260714_200243
 - cascade_results_gpt55_run1.json: checkpoint copy of 20260714_195521 (the original is used)
